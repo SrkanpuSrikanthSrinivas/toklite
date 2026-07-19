@@ -79,10 +79,12 @@ Six independent layers. Each one is toggleable, and none of them can ever make a
 | **dedupe** | Content re-sent verbatim later in the same conversation — the same file read six times, the same schema, the same log | 20–50% in agent loops |
 | **compact** | Long blocks in turns older than the recency window, trimmed to head + tail with an explicit elision marker | 10–30% on long sessions |
 | **tools** | Prose descriptions on tool schemas the conversation has never referenced. Names and parameter shapes are never touched | 5–15% when many tools are loaded |
-| **cachePoints** | Nothing — it *marks* the stable prefix (tools + system) with `cache_control` so Anthropic bills it at cache rates | up to 90% off the prefix |
+| **cachePoints** | Nothing — it *marks* the stable prefix (tools + system) with `cache_control` so Anthropic bills it at cache rates. Skipped entirely when the client already manages caching | up to 90% off the prefix |
 | **terse** | Off by default. Appends an instruction to suppress preamble. Output tokens cost 3–5× input | 10–30% of output |
 
 Plus a disk-backed **response cache**: identical requests below a temperature threshold never reach the provider at all. Cached responses are replayed as SSE for streaming clients, so agent CLIs benefit too.
+
+`cachePoints` deliberately does nothing when the request already contains `cache_control`. Adding a breakpoint on top isn't just redundant — Anthropic processes blocks in the order tools → system → messages and rejects a `ttl='1h'` block that follows a `ttl='5m'` one, so injecting a default 5-minute breakpoint into `tools` returns `400` for any client that puts a 1-hour breakpoint in `system`. There is also a hard limit of four breakpoints per request. Clients that manage caching already place better breakpoints than can be inferred from a single request in isolation.
 
 **dedupe is the one that carries the load.** It uses content-defined chunking — chunk boundaries are picked from the content of each line rather than its position — so a file re-read still matches even when it's preceded by a different amount of surrounding prose. Fixed-window shingling misses that case entirely, which is exactly the case agents produce all day.
 

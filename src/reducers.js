@@ -61,10 +61,10 @@ function fnv(str, from, len) {
 function extend(aText, aPos, bText, bPos) {
   let start = 0;
   while (aPos - start > 0 && bPos - start > 0 &&
-         aText[aPos - start - 1] === bText[bPos - start - 1]) start++;
+  aText[aPos - start - 1] === bText[bPos - start - 1]) start++;
   let end = WINDOW;
   while (aPos + end < aText.length && bPos + end < bText.length &&
-         aText[aPos + end] === bText[bPos + end]) end++;
+  aText[aPos + end] === bText[bPos + end]) end++;
   return { aStart: aPos - start, aEnd: aPos + end, length: start + end };
 }
 
@@ -216,23 +216,46 @@ function tools(body, format, opt) {
  *    shrink the payload; it changes what the payload COSTS, which is
  *    usually the single largest win in an agent loop.
  * ------------------------------------------------------------------ */
+/** Does the request already carry any cache_control breakpoints? */
+function hasCacheControl(body) {
+  const seen = (v) => {
+    if (!v || typeof v !== 'object') return false;
+    if (Array.isArray(v)) return v.some(seen);
+    if (v.cache_control) return true;
+    return Object.values(v).some(x => x && typeof x === 'object' && seen(x));
+  };
+  return seen(body.tools) || seen(body.system) || seen(body.messages);
+}
+
 function cachePoints(body, format) {
   if (format !== 'anthropic') return { name: 'cachePoints', chars: 0, note: 'n/a' };
-  let marked = 0;
 
+  // If the caller already manages prompt caching, leave it completely alone.
+  //
+  // Adding our own breakpoint on top is not merely redundant, it is invalid:
+  // Anthropic processes blocks in the order tools -> system -> messages, and a
+  // ttl='1h' block must never follow a ttl='5m' one. A default 5m breakpoint
+  // injected into `tools` therefore breaks any client that puts a 1h block in
+  // `system`, with "400 cache_control.ttl". There is also a hard limit of four
+  // breakpoints per request, which we could otherwise push a client past.
+  //
+  // Clients that do this well (Claude Code among them) already place better
+  // breakpoints than we can infer from a single request in isolation.
+  if (hasCacheControl(body)) {
+    return { name: 'cachePoints', chars: 0, note: 'client-managed, left untouched' };
+  }
+
+  let marked = 0;
   if (Array.isArray(body.tools) && body.tools.length) {
     const last = body.tools[body.tools.length - 1];
-    if (!last.cache_control) { last.cache_control = { type: 'ephemeral' }; marked++; }
+    if (last && typeof last === 'object') { last.cache_control = { type: 'ephemeral' }; marked++; }
   }
   if (typeof body.system === 'string' && body.system.length > 500) {
     body.system = [{ type: 'text', text: body.system, cache_control: { type: 'ephemeral' } }];
     marked++;
   } else if (Array.isArray(body.system) && body.system.length) {
     const last = body.system[body.system.length - 1];
-    if (last && typeof last === 'object' && !last.cache_control) {
-      last.cache_control = { type: 'ephemeral' };
-      marked++;
-    }
+    if (last && typeof last === 'object') { last.cache_control = { type: 'ephemeral' }; marked++; }
   }
   return { name: 'cachePoints', chars: 0, marked };
 }
