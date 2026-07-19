@@ -23,6 +23,19 @@ source ~/.zshrc
 
 `toklite setup` on its own changes nothing — it prints what it found (shell, profile path, npm global bin, PATH status, port availability, whether an API key is visible) and what to do about it. `toklite doctor` repeats the environment check and then self-tests the reduction pipeline.
 
+### A note on Claude Code and subscription logins
+
+Claude Code signed in with a claude.ai subscription **cannot authenticate through any proxy**. Anthropic rejects OAuth tokens whenever `ANTHROPIC_BASE_URL` points anywhere other than `api.anthropic.com`, and the failure reads as `401 OAuth access token has been revoked` — which looks like a broken login but is a configuration rule. If you hit it, `unset ANTHROPIC_BASE_URL` and restart.
+
+To use toklite with Claude Code, authenticate with an API key instead:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+toklite run -- claude
+```
+
+Worth being clear about the economics: subscription usage isn't billed per token, so there is nothing for toklite to save there. **toklite pays off on metered API-key traffic** — Kiro, Cursor and Copilot with your own key, SDK applications, CI pipelines, and custom agents. That is where a 30–50% cut in input tokens is money.
+
 ### Connecting a tool
 
 Preferred, because it changes nothing permanent:

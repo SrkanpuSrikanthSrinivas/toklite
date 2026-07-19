@@ -80,6 +80,26 @@ async function main() {
       });
 
       const [bin, ...rest] = argv.slice(sep + 1);
+
+      // Claude Code signs in with claude.ai OAuth by default, and Anthropic
+      // rejects those tokens whenever ANTHROPIC_BASE_URL points anywhere other
+      // than api.anthropic.com — proxy included. The failure surfaces as
+      // "401 OAuth access token has been revoked", which reads like a broken
+      // login rather than a configuration rule, so warn before it happens.
+      const looksLikeClaudeCode = /(^|\/)claude$/.test(bin);
+      const hasApiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+      if (looksLikeClaudeCode && !hasApiKey) {
+        console.log(c.y('\n  Heads up: Claude Code signed in with a claude.ai subscription cannot'));
+        console.log(c.y('  authenticate through any proxy. Anthropic rejects OAuth tokens when'));
+        console.log(c.y('  ANTHROPIC_BASE_URL is not api.anthropic.com, and you will see'));
+        console.log(c.y('  "401 OAuth access token has been revoked".'));
+        console.log(c.dim('\n  To use toklite with Claude Code, authenticate with an API key instead:'));
+        console.log(c.dim('    export ANTHROPIC_API_KEY=sk-ant-...'));
+        console.log(c.dim('\n  Note that subscription usage is not billed per token, so there is no'));
+        console.log(c.dim('  per-token cost for toklite to reduce there in the first place. It pays'));
+        console.log(c.dim('  off on metered API-key traffic: Kiro, Cursor, SDK apps, your own agents.\n'));
+      }
+
       const child = spawn(bin, rest, {
         stdio: 'inherit',
         env: {
@@ -188,7 +208,7 @@ async function main() {
       console.log(`  port ${String(port).padEnd(10)} ${free ? c.g('free') : c.y('in use — pick another with --port')}`);
       console.log(`  config          ${CONFIG_PATH}`);
       console.log(`  API keys seen   ${keys.anthropic ? c.g('ANTHROPIC_API_KEY') : c.dim('ANTHROPIC_API_KEY not set')}` +
-                  `  ${keys.openai ? c.g('OPENAI_API_KEY') : c.dim('OPENAI_API_KEY not set')}`);
+      `  ${keys.openai ? c.g('OPENAI_API_KEY') : c.dim('OPENAI_API_KEY not set')}`);
 
       const lines = [];
       if (binDir && !onPath) lines.push(setup.pathLine(binDir, shell));
@@ -204,6 +224,14 @@ async function main() {
         saveConfig(cfg);
         console.log(c.dim(`  wrote defaults to ${CONFIG_PATH}`));
         break;
+      }
+
+      if (!lines.length && !resolves) {
+        console.log(c.y('\n  The global bin directory is already on your PATH, so nothing needs'));
+        console.log(c.y('  fixing here — toklite just is not installed globally yet:'));
+        console.log(`\n    ${c.b('npm i -g toklite')}\n`);
+        console.log(c.dim('  If you use nvm, global installs live under the active Node version.'));
+        console.log(c.dim('  Switching Node versions hides them until you reinstall.'));
       }
 
       if (lines.length) {
@@ -235,8 +263,8 @@ async function main() {
       const single = flag('file', null);
 
       const items = single
-        ? [{ file: String(single), format: 'anthropic', body: JSON.parse(await (await import('node:fs')).readFileSync(String(single), 'utf8')) }]
-        : capture.list();
+      ? [{ file: String(single), format: 'anthropic', body: JSON.parse(await (await import('node:fs')).readFileSync(String(single), 'utf8')) }]
+      : capture.list();
 
       if (!items.length) {
         console.log('Nothing captured yet. Record some real traffic first:');
@@ -306,7 +334,7 @@ async function main() {
       const table = { ...pricing.TABLE, ...(cfg.pricing || {}) };
       for (const [model, r] of Object.entries(table)) {
         console.log(`  ${model.padEnd(20)} in $${String(r.in).padStart(6)}   out $${String(r.out).padStart(6)}` +
-                    c.dim(`   cache read $${(r.in * pricing.CACHE_READ_MULT).toFixed(2)}  write $${(r.in * pricing.CACHE_WRITE_MULT).toFixed(2)}`));
+        c.dim(`   cache read $${(r.in * pricing.CACHE_READ_MULT).toFixed(2)}  write $${(r.in * pricing.CACHE_WRITE_MULT).toFixed(2)}`));
       }
       console.log(c.dim('\n  Prices move. Override any model:'));
       console.log(c.dim('    toklite config set pricing.claude-sonnet-5.in 2'));
@@ -320,9 +348,17 @@ async function main() {
 
     case 'doctor': {
       const binDir = setup.globalBinDir();
+      const resolves = setup.commandResolves('toklite');
+      const binOnPath = setup.isOnPath(binDir);
+      // Distinguish "never installed globally" from "installed but PATH is
+      // wrong". They need opposite fixes, and conflating them sends people
+      // editing shell profiles over an install that simply never happened.
+      const verdict = resolves ? c.g('yes')
+      : binOnPath ? c.y('no — installed locally only. Run: npm i -g toklite')
+      : c.y('no — the global bin directory is not on your PATH. Run: toklite setup --write');
       console.log(c.b('environment'));
       console.log(`  node ${process.version}  ${Number(process.version.slice(1).split('.')[0]) >= 20 ? c.g('ok') : c.y('needs >= 20')}`);
-      console.log(`  toklite on PATH: ${setup.commandResolves('toklite') ? c.g('yes') : c.y('no — run `toklite setup --write`')}`);
+      console.log(`  toklite command: ${verdict}`);
       console.log(c.dim(`  global bin: ${binDir || 'unknown'}`));
       console.log(c.dim(`  config: ${CONFIG_PATH}`));
       console.log();
@@ -375,46 +411,46 @@ export async function updateProfile(userId, patch) {
 }
 `;
 
-      const LOG = Array.from({ length: 30 }, (_, i) =>
-        `2026-07-18T09:${String(i).padStart(2, '0')}:11Z  DEBUG  pool acquire conn=${i % 8} waiters=${i % 3} elapsed=${i * 7}ms`
-      ).join('\n');
+const LOG = Array.from({ length: 30 }, (_, i) =>
+`2026-07-18T09:${String(i).padStart(2, '0')}:11Z  DEBUG  pool acquire conn=${i % 8} waiters=${i % 3} elapsed=${i * 7}ms`
+).join('\n');
 
-      const probe = {
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
-        system: 'You are a coding agent operating in a repository. Follow the user instructions carefully and use the provided tools to inspect and modify files.   \n\n\n\n\n' + '='.repeat(60) + '\n',
-        tools: [
-          { name: 'read_file', description: 'Read a file from the workspace and return its contents as a string. This tool should be preferred over shell commands such as cat because it handles encoding correctly and applies workspace path resolution rules consistently across platforms.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Absolute or workspace-relative path to the file that should be read from disk, resolved against the workspace root when relative.' } } } },
-          { name: 'write_file', description: 'Write content to a file, creating parent directories as needed. Overwrites any existing file at that path without prompting, so callers should read first when they intend to preserve prior content.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Destination path for the file that will be written, resolved against the workspace root when relative.' }, content: { type: 'string', description: 'The full textual content to write to the destination file, replacing whatever was there before.' } } } },
-          { name: 'run_tests', description: 'Execute the project test suite and return the results, including failures with their stack traces, so that regressions introduced by an edit can be identified before the change is reported as complete.', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'Optional glob restricting which test files are executed during this run of the suite.' } } } }
-        ],
-        messages: [
-          { role: 'user', content: 'Read src/profile.js and tell me what it does.' },
-          { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'read_file', input: { path: 'src/profile.js' } }] },
-          { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: FILE }] }] },
-          { role: 'assistant', content: 'It loads and updates user profiles, with a cache layer in front of Postgres.' },
-          { role: 'user', content: 'Here are the debug logs from the failing run:\n' + LOG },
-          { role: 'assistant', content: 'The pool is saturating.' },
-          { role: 'user', content: 'Re-read the file and add error handling to loadPreferences.' },
-          { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'read_file', input: { path: 'src/profile.js' } }] },
-          { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'text', text: FILE }] }] }
-        ]
-      };
-      const { reduce } = await import('../src/reducers.js');
-      const beforeBytes = Buffer.byteLength(JSON.stringify(probe));
-      const { body, report } = reduce(probe, 'anthropic', loadConfig());
-      const afterBytes = Buffer.byteLength(JSON.stringify(body));
-      const pct = Math.round((1 - afterBytes / beforeBytes) * 100);
-      console.log(`${c.b('self-test')}  ${beforeBytes.toLocaleString()} -> ${afterBytes.toLocaleString()} bytes (${pct >= 0 ? '-' : '+'}${Math.abs(pct)}%)`);
-      for (const r of report) console.log(c.dim(`  ${r.name.padEnd(12)} removed ${(r.chars || 0).toLocaleString()} chars${r.marked ? `, ${r.marked} cache breakpoint(s)` : ''}`));
-      console.log(c.dim('\n  Bytes are exact but are not tokens. Real token and cost figures come from'));
-      console.log(c.dim('  the provider once traffic flows: run a session, then `toklite stats`.'));
-      server.close();
-      break;
-    }
+const probe = {
+model: 'claude-sonnet-4-5',
+max_tokens: 1024,
+system: 'You are a coding agent operating in a repository. Follow the user instructions carefully and use the provided tools to inspect and modify files.   \n\n\n\n\n' + '='.repeat(60) + '\n',
+tools: [
+{ name: 'read_file', description: 'Read a file from the workspace and return its contents as a string. This tool should be preferred over shell commands such as cat because it handles encoding correctly and applies workspace path resolution rules consistently across platforms.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Absolute or workspace-relative path to the file that should be read from disk, resolved against the workspace root when relative.' } } } },
+{ name: 'write_file', description: 'Write content to a file, creating parent directories as needed. Overwrites any existing file at that path without prompting, so callers should read first when they intend to preserve prior content.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Destination path for the file that will be written, resolved against the workspace root when relative.' }, content: { type: 'string', description: 'The full textual content to write to the destination file, replacing whatever was there before.' } } } },
+{ name: 'run_tests', description: 'Execute the project test suite and return the results, including failures with their stack traces, so that regressions introduced by an edit can be identified before the change is reported as complete.', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'Optional glob restricting which test files are executed during this run of the suite.' } } } }
+],
+messages: [
+{ role: 'user', content: 'Read src/profile.js and tell me what it does.' },
+{ role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'read_file', input: { path: 'src/profile.js' } }] },
+{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: FILE }] }] },
+{ role: 'assistant', content: 'It loads and updates user profiles, with a cache layer in front of Postgres.' },
+{ role: 'user', content: 'Here are the debug logs from the failing run:\n' + LOG },
+{ role: 'assistant', content: 'The pool is saturating.' },
+{ role: 'user', content: 'Re-read the file and add error handling to loadPreferences.' },
+{ role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'read_file', input: { path: 'src/profile.js' } }] },
+{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'text', text: FILE }] }] }
+]
+};
+const { reduce } = await import('../src/reducers.js');
+const beforeBytes = Buffer.byteLength(JSON.stringify(probe));
+const { body, report } = reduce(probe, 'anthropic', loadConfig());
+const afterBytes = Buffer.byteLength(JSON.stringify(body));
+const pct = Math.round((1 - afterBytes / beforeBytes) * 100);
+console.log(`${c.b('self-test')}  ${beforeBytes.toLocaleString()} -> ${afterBytes.toLocaleString()} bytes (${pct >= 0 ? '-' : '+'}${Math.abs(pct)}%)`);
+for (const r of report) console.log(c.dim(`  ${r.name.padEnd(12)} removed ${(r.chars || 0).toLocaleString()} chars${r.marked ? `, ${r.marked} cache breakpoint(s)` : ''}`));
+console.log(c.dim('\n  Bytes are exact but are not tokens. Real token and cost figures come from'));
+console.log(c.dim('  the provider once traffic flows: run a session, then `toklite stats`.'));
+server.close();
+break;
+}
 
-    default:
-      console.log(`${c.b('toklite')} — cut LLM tokens before the request leaves your machine
+default:
+console.log(`${c.b('toklite')} — cut LLM tokens before the request leaves your machine
 
   toklite setup                check this machine and print what to configure
   toklite run -- <command>     start the proxy and launch a tool through it
@@ -438,59 +474,59 @@ export async function updateProfile(userId, patch) {
     toklite run --audit --verbose -- claude    # calibration run
     toklite verify                             # zero-cost proof of savings
 `);
-  }
+}
 }
 
 function printStats(s, footer = false) {
-  const line = footer ? '\n' + c.b('toklite session summary') : c.b('toklite stats');
-  console.log(line);
-  console.log(`  requests        ${s.requests}   (cache hits: ${s.cacheHits})`);
+const line = footer ? '\n' + c.b('toklite session summary') : c.b('toklite stats');
+console.log(line);
+console.log(`  requests        ${s.requests}   (cache hits: ${s.cacheHits})`);
 
-  if (!s.measured) {
-    console.log(c.y('  no exactly measured requests yet'));
-    const reasons = Object.entries(s.unmeasuredReasons || {});
-    if (reasons.length) {
-      console.log(c.dim('  could not measure:'));
-      for (const [r, n] of reasons) console.log(c.dim(`    ${n}x  ${r}`));
-    }
-    console.log(c.dim('  toklite reports provider-verified numbers only. It will not print an estimate.'));
-    return;
-  }
+if (!s.measured) {
+console.log(c.y('  no exactly measured requests yet'));
+const reasons = Object.entries(s.unmeasuredReasons || {});
+if (reasons.length) {
+console.log(c.dim('  could not measure:'));
+for (const [r, n] of reasons) console.log(c.dim(`    ${n}x  ${r}`));
+}
+console.log(c.dim('  toklite reports provider-verified numbers only. It will not print an estimate.'));
+return;
+}
 
-  const saved = s.tokensBefore - s.tokensAfter;
-  const pct = s.tokensBefore ? ((saved / s.tokensBefore) * 100).toFixed(1) : '0.0';
-  const costSaved = s.costBaseline - s.costActual;
-  const coverage = ((s.measured / (s.measured + s.unmeasured)) * 100).toFixed(0);
+const saved = s.tokensBefore - s.tokensAfter;
+const pct = s.tokensBefore ? ((saved / s.tokensBefore) * 100).toFixed(1) : '0.0';
+const costSaved = s.costBaseline - s.costActual;
+const coverage = ((s.measured / (s.measured + s.unmeasured)) * 100).toFixed(0);
 
-  console.log(c.b('\n  exact — counted by the provider, not estimated'));
-  console.log(`    input without toklite   ${s.tokensBefore.toLocaleString()} tokens`);
-  console.log(`    input actually billed   ${s.tokensAfter.toLocaleString()} tokens`);
-  console.log(`    saved                   ${saved.toLocaleString()} tokens  ${c.g(`(-${pct}%)`)}`);
-  console.log(`    output billed           ${s.outputTokens.toLocaleString()} tokens`);
-  if (s.cacheReadTokens || s.cacheWriteTokens) {
-    console.log(c.dim(`    of billed input: ${s.cacheReadTokens.toLocaleString()} read from prompt cache, ${s.cacheWriteTokens.toLocaleString()} written to it`));
-  }
+console.log(c.b('\n  exact — counted by the provider, not estimated'));
+console.log(`    input without toklite   ${s.tokensBefore.toLocaleString()} tokens`);
+console.log(`    input actually billed   ${s.tokensAfter.toLocaleString()} tokens`);
+console.log(`    saved                   ${saved.toLocaleString()} tokens  ${c.g(`(-${pct}%)`)}`);
+console.log(`    output billed           ${s.outputTokens.toLocaleString()} tokens`);
+if (s.cacheReadTokens || s.cacheWriteTokens) {
+console.log(c.dim(`    of billed input: ${s.cacheReadTokens.toLocaleString()} read from prompt cache, ${s.cacheWriteTokens.toLocaleString()} written to it`));
+}
 
-  console.log(c.b('\n  money'));
-  console.log(`    would have cost         ${pricing.usd(s.costBaseline)}`);
-  console.log(`    actually cost           ${pricing.usd(s.costActual)}`);
-  console.log(`    saved                   ${c.g(pricing.usd(costSaved))}`);
-  console.log(c.dim(`    rates as of ${pricing.PRICING_DATE}; override any model under "pricing" in config`));
+console.log(c.b('\n  money'));
+console.log(`    would have cost         ${pricing.usd(s.costBaseline)}`);
+console.log(`    actually cost           ${pricing.usd(s.costActual)}`);
+console.log(`    saved                   ${c.g(pricing.usd(costSaved))}`);
+console.log(c.dim(`    rates as of ${pricing.PRICING_DATE}; override any model under "pricing" in config`));
 
-  console.log(c.dim(`\n  measured ${s.measured}/${s.measured + s.unmeasured} requests (${coverage}%)`));
-  const reasons = Object.entries(s.unmeasuredReasons || {});
-  for (const [r, n] of reasons) console.log(c.dim(`    unmeasured: ${n}x ${r}`));
+console.log(c.dim(`\n  measured ${s.measured}/${s.measured + s.unmeasured} requests (${coverage}%)`));
+const reasons = Object.entries(s.unmeasuredReasons || {});
+for (const [r, n] of reasons) console.log(c.dim(`    unmeasured: ${n}x ${r}`));
 
-  const chars = Object.entries(s.charsRemoved || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  if (chars.length) {
-    const total = chars.reduce((a, [, v]) => a + v, 0);
-    console.log(c.dim('\n  bytes removed by each layer (exact; token saving apportioned by share)'));
-    for (const [k, v] of chars) {
-      const share = Math.round((v / total) * 100);
-      console.log(c.dim(`    ${k.padEnd(12)} ${v.toLocaleString()} chars  ~${share}% of the reduction`));
-    }
-  }
-  if (s.shadowRequests) console.log(c.y(`\n  ${s.shadowRequests} request(s) ran in shadow mode: measured, not altered.`));
+const chars = Object.entries(s.charsRemoved || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+if (chars.length) {
+const total = chars.reduce((a, [, v]) => a + v, 0);
+console.log(c.dim('\n  bytes removed by each layer (exact; token saving apportioned by share)'));
+for (const [k, v] of chars) {
+const share = Math.round((v / total) * 100);
+console.log(c.dim(`    ${k.padEnd(12)} ${v.toLocaleString()} chars  ~${share}% of the reduction`));
+}
+}
+if (s.shadowRequests) console.log(c.y(`\n  ${s.shadowRequests} request(s) ran in shadow mode: measured, not altered.`));
 }
 
 main();
