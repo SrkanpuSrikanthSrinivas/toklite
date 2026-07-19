@@ -1,0 +1,8 @@
+node_modules/
+*.tgz
+.DS_Store
+.env
+.env.*
+# Captured requests contain real prompts and source code. Never commit them.
+captures/
+*.jsonl
