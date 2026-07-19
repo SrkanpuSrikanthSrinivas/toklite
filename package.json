@@ -3,14 +3,44 @@
   "version": "0.1.0",
   "description": "Local CLI proxy that cuts LLM token usage for Claude Code, Kiro, Cursor and any OpenAI/Anthropic-compatible tool, with provider-verified savings.",
   "type": "module",
-  "bin": { "toklite": "./bin/toklite.js" },
-  "engines": { "node": ">=20" },
-  "files": ["bin", "src", "README.md", "LICENSE"],
-  "keywords": ["llm", "tokens", "proxy", "cli", "anthropic", "openai", "claude", "claude-code", "cost-optimization", "prompt-caching"],
-  "repository": { "type": "git", "url": "git+https://github.com/USERNAME/toklite.git" },
+  "bin": {
+    "toklite": "./bin/toklite.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "llm",
+    "tokens",
+    "proxy",
+    "cli",
+    "anthropic",
+    "openai",
+    "claude",
+    "claude-code",
+    "cost-optimization",
+    "prompt-caching"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/USERNAME/toklite.git"
+  },
   "homepage": "https://github.com/USERNAME/toklite#readme",
-  "bugs": { "url": "https://github.com/USERNAME/toklite/issues" },
+  "bugs": {
+    "url": "https://github.com/USERNAME/toklite/issues"
+  },
   "author": "Srikanth",
   "license": "MIT",
-  "optionalDependencies": { "js-tiktoken": "^1.0.15" }
+  "optionalDependencies": {
+    "js-tiktoken": "^1.0.15"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  }
 }
