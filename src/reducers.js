@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { walkTexts, turnCount } from './adapters.js';
+import { images, outputCap, diffReads } from './reducers-heavy.js';
 
 // Reducers report characters removed, which is an exact measurement taken
 // locally. Token counts are never estimated here: the real before/after
@@ -61,10 +62,10 @@ function fnv(str, from, len) {
 function extend(aText, aPos, bText, bPos) {
   let start = 0;
   while (aPos - start > 0 && bPos - start > 0 &&
-  aText[aPos - start - 1] === bText[bPos - start - 1]) start++;
+         aText[aPos - start - 1] === bText[bPos - start - 1]) start++;
   let end = WINDOW;
   while (aPos + end < aText.length && bPos + end < bText.length &&
-  aText[aPos + end] === bText[bPos + end]) end++;
+         aText[aPos + end] === bText[bPos + end]) end++;
   return { aStart: aPos - start, aEnd: aPos + end, length: start + end };
 }
 
@@ -279,17 +280,37 @@ function terse(body, format, opt) {
 
 /* ------------------------------------------------------------------ */
 
-export function reduce(originalBody, format, cfg) {
+export async function reduce(originalBody, format, cfg) {
   const body = structuredClone(originalBody);
   const r = cfg.reducers;
   const report = [];
 
   if (r.hygiene.enabled)     report.push(hygiene(body, format));
+  if (r.diffReads?.enabled)  report.push(diffReads(body, format, r.diffReads));
   if (r.dedupe.enabled)      report.push(dedupe(body, format, r.dedupe));
   if (r.compact.enabled)     report.push(compact(body, format, r.compact));
   if (r.tools.enabled)       report.push(tools(body, format, r.tools));
+  if (r.images?.enabled)     report.push(await images(body, format, r.images));
+  if (r.outputCap?.enabled)  report.push(outputCap(body, format, r.outputCap));
   if (r.cachePoints.enabled) report.push(cachePoints(body, format));
   if (r.terse.enabled)       report.push(terse(body, format, r.terse));
 
+  return { body, report };
+}
+
+// Synchronous variant for contexts that cannot await (doctor's quick self
+// test, the profile byte-delta pass). Skips only the async image reducer.
+export function reduceSync(originalBody, format, cfg) {
+  const body = structuredClone(originalBody);
+  const r = cfg.reducers;
+  const report = [];
+  if (r.hygiene.enabled)     report.push(hygiene(body, format));
+  if (r.diffReads?.enabled)  report.push(diffReads(body, format, r.diffReads));
+  if (r.dedupe.enabled)      report.push(dedupe(body, format, r.dedupe));
+  if (r.compact.enabled)     report.push(compact(body, format, r.compact));
+  if (r.tools.enabled)       report.push(tools(body, format, r.tools));
+  if (r.outputCap?.enabled)  report.push(outputCap(body, format, r.outputCap));
+  if (r.cachePoints.enabled) report.push(cachePoints(body, format));
+  if (r.terse.enabled)       report.push(terse(body, format, r.terse));
   return { body, report };
 }

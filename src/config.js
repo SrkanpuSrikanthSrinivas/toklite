@@ -11,8 +11,11 @@ export const DEFAULTS = {
   reducers: {
     hygiene:     { enabled: true },
     dedupe:      { enabled: true, minChars: 200 },
+    diffReads:   { enabled: true, minChars: 400, minSimilarity: 0.5 },
     compact:     { enabled: true, keepRecentTurns: 6, maxOldBlockChars: 1200, headChars: 500, tailChars: 400 },
     tools:       { enabled: true, minToolChars: 800 },
+    images:      { enabled: true, maxEdge: 1024 },
+    outputCap:   { enabled: false, maxTokens: 4096 },
     cachePoints: { enabled: true },
     terse:       { enabled: false, text: 'Be concise. No preamble, no restating the question, no summary of what you just did.' }
   },

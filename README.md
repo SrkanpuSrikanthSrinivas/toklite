@@ -12,7 +12,7 @@ toklite stats                  # what you saved
 toklite fidelity               # did reduction change the answers?
 ```
 
-Requires Node 20+. Nothing else — no Python, no model download, no account.
+Requires Node 20+. Image downscaling additionally needs `sharp` (an optional dependency — installed automatically where prebuilt binaries exist, skipped silently otherwise; the reducer reports if it's missing).
 
 If the `toklite` command isn't found after installing, npm's global bin directory isn't on your PATH. The installer detects this and tells you; to fix it:
 
@@ -79,6 +79,9 @@ Six independent layers. Each one is toggleable, and none of them can ever make a
 | **dedupe** | Content re-sent verbatim later in the same conversation — the same file read six times, the same schema, the same log | 20–50% in agent loops |
 | **compact** | Long blocks in turns older than the recency window, trimmed to head + tail with an explicit elision marker | 10–30% on long sessions |
 | **tools** | Prose descriptions on tool schemas the conversation has never referenced. Names and parameter shapes are never touched | 5–15% when many tools are loaded |
+| **diffReads** | An edited file re-read is re-sent as a unified diff against the earlier copy, not whole. Catches what dedupe can't: near-identical, not identical | 20–40% on edit loops |
+| **images** | Screenshots downscaled to a 1024px long edge before send. Anthropic bills ≈ (w×h)/750, so 1568²→1024² is −57%. Needs `sharp` | large for screenshot agents |
+| **outputCap** | Lowers an over-large `max_tokens` ceiling. Off by default | bounds worst case |
 | **cachePoints** | Nothing — it *marks* the stable prefix (tools + system) with `cache_control` so Anthropic bills it at cache rates. Skipped entirely when the client already manages caching | up to 90% off the prefix |
 | **terse** | Off by default. Appends an instruction to suppress preamble. Output tokens cost 3–5× input | 10–30% of output |
 
@@ -113,6 +116,24 @@ Verifying 47 captured request(s) against https://api.anthropic.com
 ```
 
 Deterministic and repeatable: same captures in, same answer out. Turn `capture.enabled` back off afterwards — the files contain your prompts.
+
+**2b. `toklite profile` — where the tokens actually are.** Before trying to reduce more, measure. Each bucket is sized by *ablation*: count the request, blank one bucket, count again, and the difference is that bucket's exact token cost. Free, and exact — byte-share attribution would be a guess, since code, prose, base64 and JSON tokenize at very different densities.
+
+```
+  13,047 input tokens across 3 request(s)
+
+  bucket           tokens     share   already cut
+  images              6,828    52.3%   0% of bytes
+  tool_results        3,204    24.6%   68% of bytes
+  tools               1,296     9.9%   60% of bytes
+  system              1,080     8.3%   80% of bytes
+  framing               534             message envelopes, unremovable
+
+  Where the next win is
+    images holds 52% of your tokens with 100% still untouched.
+```
+
+It also counts cache breakpoints, because tokens behind one bill at roughly a tenth of the input rate — reduction aimed at cached content is worth about a tenth of reduction aimed at fresh content. Optimise for the bill, not the token count.
 
 **3. Do the same curl by hand.** Nothing here is privileged. Take any captured request from `~/.toklite/captures/`, POST it to `/v1/messages/count_tokens`, apply the reducers, POST it again, subtract.
 

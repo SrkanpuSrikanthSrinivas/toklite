@@ -1,6 +1,6 @@
 {
   "name": "toklite",
-  "version": "0.2.6",
+  "version": "0.3.1",
   "description": "Local CLI proxy that cuts LLM token usage for Claude Code, Kiro, Cursor and any OpenAI/Anthropic-compatible tool, with provider-verified savings.",
   "type": "module",
   "bin": {
@@ -38,7 +38,8 @@
   "author": "Srikanth",
   "license": "MIT",
   "optionalDependencies": {
-    "js-tiktoken": "^1.0.15"
+    "js-tiktoken": "^1.0.15",
+    "sharp": "^0.34.0"
   },
   "scripts": {
     "postinstall": "node bin/postinstall.js || exit 0"
