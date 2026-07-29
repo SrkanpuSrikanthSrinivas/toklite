@@ -1,6 +1,6 @@
 {
   "name": "toklite",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local CLI proxy that cuts LLM token usage for Claude Code, Kiro, Cursor and any OpenAI/Anthropic-compatible tool, with provider-verified savings.",
   "type": "module",
   "bin": {
@@ -29,11 +29,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/USERNAME/toklite.git"
+    "url": "git+https://github.com/SrkanpuSrikanthSrinivas/toklite.git"
   },
-  "homepage": "https://github.com/USERNAME/toklite#readme",
+  "homepage": "https://github.com/SrkanpuSrikanthSrinivas/toklite#readme",
   "bugs": {
-    "url": "https://github.com/USERNAME/toklite/issues"
+    "url": "https://github.com/SrkanpuSrikanthSrinivas/toklite/issues"
   },
   "author": "Srikanth",
   "license": "MIT",
