@@ -87,7 +87,7 @@ export function createServer(cfg, opts = {}) {
 
     const format = detectFormat(url.pathname);
     const upstreamBase = req.headers['x-toklite-upstream']
-      || (format === 'openai' ? cfg.upstreams.openai : cfg.upstreams.anthropic);
+    || (format === 'openai' ? cfg.upstreams.openai : cfg.upstreams.anthropic);
 
     const raw = await readBody(req);
 
@@ -102,9 +102,20 @@ export function createServer(cfg, opts = {}) {
 
     if (cfg.capture?.enabled) capture.save(original, format, cfg);
 
-    const { body: reduced, report } = reduce(original, format, cfg);
+    // reduce() is async (image downscaling awaits sharp). A missing await here
+    // was the 0.3.x crash: destructuring a Promise yields undefined report.
+    // The try/catch is belt-and-suspenders — if any reducer throws, we must
+    // still forward the ORIGINAL request rather than drop the user's traffic.
+    let reduced, report;
+    try {
+      ({ body: reduced, report } = await reduce(original, format, cfg));
+    } catch (err) {
+      if (verbose) console.error('  reduce failed, forwarding original:', err.message);
+      reduced = original;
+      report = [];
+    }
     const toSend = cfg.shadow ? original : reduced;
-    const bytesRemoved = report.reduce((a, r) => a + (r.chars || 0), 0);
+    const bytesRemoved = (report || []).reduce((a, r) => a + (r.chars || 0), 0);
 
     const meta = {
       'x-toklite-bytes-removed': String(bytesRemoved),
@@ -121,7 +132,7 @@ export function createServer(cfg, opts = {}) {
         // Nothing was sent upstream, so the exact saving is the full cost of
         // the original request. Measured, not assumed.
         measure({ original, format, headers: req.headers, upstreamBase, usage: null,
-                  cacheHit: true, cfg, verbose });
+          cacheHit: true, cfg, verbose });
         if (verbose) console.log('  cache HIT — request never left the machine');
         if (wantsStream) {
           res.writeHead(200, { ...meta, 'x-toklite-cache': 'hit', 'content-type': 'text/event-stream' });
@@ -171,7 +182,7 @@ export function createServer(cfg, opts = {}) {
       measure({ original, format, headers: req.headers, upstreamBase, usage, cacheHit: false, cfg, verbose });
       if (auditWanted) {
         audit(upstreamUrl, req.headers, original, format,
-              fidelity.extractStreamOutput(text, format), bytesRemoved, cfg, verbose);
+          fidelity.extractStreamOutput(text, format), bytesRemoved, cfg, verbose);
       }
       return;
     }
@@ -185,7 +196,7 @@ export function createServer(cfg, opts = {}) {
     measure({ original, format, headers: req.headers, upstreamBase, usage, cacheHit: false, cfg, verbose });
     if (auditWanted && json) {
       audit(upstreamUrl, req.headers, original, format,
-            fidelity.extractOutput(json, format), bytesRemoved, cfg, verbose);
+        fidelity.extractOutput(json, format), bytesRemoved, cfg, verbose);
     }
   });
 }
@@ -199,8 +210,8 @@ function audit(url, headers, originalBody, format, reducedOutput, bytesRemoved, 
     onDone: (rec) => {
       if (!verbose) return;
       const mark = rec.verdict === 'match' ? '\x1b[32mmatch\x1b[0m'
-                 : rec.verdict === 'near' ? '\x1b[33mnear\x1b[0m'
-                 : '\x1b[31mDIVERGENT\x1b[0m';
+      : rec.verdict === 'near' ? '\x1b[33mnear\x1b[0m'
+      : '\x1b[31mDIVERGENT\x1b[0m';
       console.log(`  fidelity ${mark}  sim=${rec.textSim.toFixed(2)}  ${rec.reason}  (audit cost ~${rec.overheadTokens} tok)`);
     }
   });
@@ -249,7 +260,7 @@ async function measure({ original, format, headers, upstreamBase, usage, cacheHi
   if (verbose) {
     const pct = before ? Math.round(((before - after) / before) * 100) : 0;
     const money = (costBaseline !== null && costActual !== null)
-      ? `  saved ${pricing.usd(costBaseline - costActual)}` : '';
+    ? `  saved ${pricing.usd(costBaseline - costActual)}` : '';
     console.log(`  ${before} -> ${after} tokens (-${pct}%) exact via ${counted.method}${money}`);
   }
 }
